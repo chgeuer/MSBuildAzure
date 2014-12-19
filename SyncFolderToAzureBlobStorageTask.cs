@@ -21,13 +21,12 @@ using Microsoft.WindowsAzure.Storage.Blob;
         [Required]public string SourceFolder { get; set; }
 
 
-        public enum BlobComparisonResult
+        internal enum BlobComparisonResult
         {
             NotEqual, 
             SizeSameContentUnclear,
             PrettySureEqual
         }
-
 
         public class ContentInfo
         {
@@ -37,16 +36,42 @@ using Microsoft.WindowsAzure.Storage.Blob;
             public static readonly ContentInfo NotExist = new ContentInfo { ContentMD5 = null, Length = -1};
         }
 
-        public static async Task<BlobComparisonResult> BlobEqualsLocal(CloudBlockBlob blob, FileInfo fileInfo)
+        public static async Task UploadIfNeeded(CloudStorageAccount account, string containerName, string blobName, FileInfo fileInfo)
         {
-            var b = await GetContentInfo(fileInfo);
-            if (b == ContentInfo.NotExist) return BlobComparisonResult.NotEqual;
+            var client = account.CreateCloudBlobClient();
+            var container = client.GetContainerReference(containerName);
+            CloudBlockBlob blob = container.GetBlockBlobReference(blobName);
+
+            var b = await GetContentInfo(blob);
             var f = await GetContentInfo(fileInfo);
-            if (b.Length != f.Length) return BlobComparisonResult.NotEqual;
-            if (string.IsNullOrEmpty(b.ContentMD5)) return BlobComparisonResult.SizeSameContentUnclear;
-            if (!string.Equals(b.ContentMD5, f.ContentMD5)) return BlobComparisonResult.NotEqual;
-            return BlobComparisonResult.PrettySureEqual;
+
+            var result = ((Func<BlobComparisonResult>)(() =>
+            {
+                if (b == ContentInfo.NotExist) return BlobComparisonResult.NotEqual;
+                if (b.Length != f.Length) return BlobComparisonResult.NotEqual;
+                if (string.IsNullOrEmpty(b.ContentMD5)) return BlobComparisonResult.SizeSameContentUnclear;
+                if (!string.Equals(b.ContentMD5, f.ContentMD5)) return BlobComparisonResult.NotEqual;
+                return BlobComparisonResult.PrettySureEqual;
+            }))();
+
+            if (result == BlobComparisonResult.NotEqual  ||
+                result == BlobComparisonResult.SizeSameContentUnclear)
+            {
+                await LargeFileUploaderUtils.UploadAsync(
+                    fetchLocalData: (offset, length) => fileInfo.GetFileContentAsync(offset, length),
+                    blobLenth: fileInfo.Length,
+                    storageAccount: account,
+                    containerName: containerName,
+                    blobName: blobName);
+
+                blob.Properties.ContentMD5 = f.ContentMD5;                
+                await blob.SetPropertiesAsync();
+
+                blob.Metadata["LastModified"] = fileInfo.LastWriteTimeUtc.ToString();
+                await blob.SetMetadataAsync();
+            }
         }
+
 
         public static async Task<ContentInfo> GetContentInfo(CloudBlockBlob blob)
         {
@@ -91,63 +116,17 @@ using Microsoft.WindowsAzure.Storage.Blob;
             var account = CloudStorageAccount.Parse(connectionString);
             var client = account.CreateCloudBlobClient();
             var container = client.GetContainerReference(this.ContainerName);
+            container.CreateIfNotExists();
 
-            Func<FileInfo, System.Threading.Tasks.Task> uploadAsync = async (inputFile) =>
-            {
-                await container.CreateIfNotExistsAsync();
-
-                LargeFileUploader.LargeFileUploaderUtils.Log = log;
-
-                await LargeFileUploaderUtils.UploadAsync(
-                    file: inputFile,
-                    storageAccount: account,
-                    containerName: this.ContainerName,
-                    uploadParallelism: 1);
-            };
-
-            Func<string, System.Threading.Tasks.Task<DateTime>> getLastModifiedAsync = async (blobName) =>
-            {
-                try
-                {
-                    var blobReference = await container.GetBlobReferenceFromServerAsync(blobName);
-                    if (!blobReference.Exists()) return DateTime.MinValue;
-                    if (!blobReference.Metadata.ContainsKey("LastModified")) return DateTime.MinValue;
-                    var lastModifiedStr = blobReference.Metadata["LastModified"];
-                    long timeTicks = long.Parse(lastModifiedStr);
-                    var lastModified = new DateTime(timeTicks, DateTimeKind.Utc);
-                    return lastModified;
-                }
-                catch (StorageException)
-                {
-                    return DateTime.MinValue;
-                }
-            };
 
             var rootFolder =  new DirectoryInfo(this.SourceFolder).FullName;
-            var files = new DirectoryInfo(rootFolder).EnumerateFiles("*.*", SearchOption.AllDirectories)
-                .Select(f => f.FullName.Replace(rootFolder + "\\", string.Empty)).ToList();
+            var tasks = new DirectoryInfo(rootFolder).EnumerateFiles("*.*", SearchOption.AllDirectories)
+                .Select(f => new { BlobName = f.FullName.Replace(rootFolder + "\\", string.Empty),  FileInfo  = f })
+                .Select(_ => UploadIfNeeded(account: account, containerName: this.ContainerName, blobName: _.BlobName, fileInfo: _.FileInfo))
+                .ToArray();
 
 
-
-
-
-            //var uploadTasks = Files.Select(async (fileItem) => {
-            //    FileInfo file = new FileInfo(fileItem.ItemSpec);
-            //    string blobName = (string.IsNullOrEmpty(DestinationFolder) ? "" : string.Format("{0}/", DestinationFolder)) + file.Name;
-
-            //    DateTime lastModified = await getLastModifiedAsync(blobName);
-            //    if (lastModified != file.LastWriteTimeUtc)
-            //    {
-            //        log("must upload");
-            //        await uploadAsync(file);
-            //        await setLastModifiedAsync(blobName, file);
-
-            //        log(string.Format("Updating: {0}", file.Name));
-            //    }
-            //}).ToArray();
-
-            //System.Threading.Tasks.Task.WhenAll(uploadTasks).Wait();
-
+            Task.WaitAll(tasks);
 
             return true;
         }
