@@ -9,9 +9,9 @@
   <UsingTask TaskName="CopyToAzureBlobStorageTask" AssemblyFile="$(MSBuildProjectDirectory)\..\bin\debug\RhysG.MSBuild.Azure.dll" />
   <ItemGroup>
     <Content Include="azure-connection-string.txt" />
-    <Scripts Include="README.txt" />
+    <UploadFiles Include="README.txt" />
   </ItemGroup>
   <Target Name="Default">
-    <CopyToAzureBlobStorageTask ContainerName="scripts" ContentType="text/javascript" ConnectionStringFile="$(MSBuildProjectDirectory)\azure-connection-string.txt" Files="@(Scripts)" />
+    <CopyToAzureBlobStorageTask ContainerName="scripts" ContentType="text/plain" ConnectionStringFile="$(MSBuildProjectDirectory)\azure-connection-string.txt" Files="@(UploadFiles)" />
   </Target>
 </Project>
