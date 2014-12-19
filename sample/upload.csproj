@@ -15,7 +15,9 @@
   </ItemGroup>
   <Target Name="Default">
     <Copy SourceFiles="@(PluginCopyFiles)" DestinationFiles="@(PluginCopyFiles->'$(MSBuildProjectDirectory)\libs\%(RecursiveDir)%(Filename)%(Extension)')" />
+    <!--
     <CopyToAzureBlobStorageTask ContainerName="scripts" ContentType="text/plain" ConnectionStringFile="$(MSBuildProjectDirectory)\azure-connection-string.txt" Files="@(UploadFiles)" />
+    -->
     <SyncFolderToAzureBlobStorageTask ConnectionStringFile="$(MSBuildProjectDirectory)\azure-connection-string.txt" ContainerName="deploy" SourceFolder="$(MSBuildProjectDirectory)" />
   </Target>
 </Project>

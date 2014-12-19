@@ -36,7 +36,7 @@ using Microsoft.WindowsAzure.Storage.Blob;
             public static readonly ContentInfo NotExist = new ContentInfo { ContentMD5 = null, Length = -1};
         }
 
-        public static async Task UploadIfNeeded(CloudStorageAccount account, string containerName, string blobName, FileInfo fileInfo)
+        public async Task UploadIfNeeded(CloudStorageAccount account, string containerName, string blobName, FileInfo fileInfo)
         {
             var client = account.CreateCloudBlobClient();
             var container = client.GetContainerReference(containerName);
@@ -69,9 +69,23 @@ using Microsoft.WindowsAzure.Storage.Blob;
 
                 blob.Metadata["LastModified"] = fileInfo.LastWriteTimeUtc.ToString();
                 await blob.SetMetadataAsync();
+
+                log(string.Format("Uploaded {0} to {1}", fileInfo.FullName, blob.Uri.AbsoluteUri));
+            }
+            else
+            {
+                log(string.Format("Skipped {0}", fileInfo.FullName));
             }
         }
 
+        public void log(string msg)
+        {
+            BuildEngine.LogMessageEvent(new BuildMessageEventArgs(
+                message: msg, 
+                helpKeyword: string.Empty, 
+                senderName: this.GetType().Name,
+                importance: MessageImportance.High));
+        }
 
         public static async Task<ContentInfo> GetContentInfo(CloudBlockBlob blob)
         {
@@ -108,10 +122,6 @@ using Microsoft.WindowsAzure.Storage.Blob;
 
         public bool Execute()
         {
-            Action<string> log = msg => BuildEngine.LogMessageEvent(new BuildMessageEventArgs(
-                        message: msg, helpKeyword: string.Empty, senderName: this.GetType().Name,
-                        importance: MessageImportance.High));
-
             var connectionString = File.ReadAllText(this.ConnectionStringFile);
             var account = CloudStorageAccount.Parse(connectionString);
             var client = account.CreateCloudBlobClient();
