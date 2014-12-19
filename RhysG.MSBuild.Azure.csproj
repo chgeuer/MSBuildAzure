@@ -73,6 +73,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="SyncFolderToAzureBlobStorageTask.cs" />
     <Compile Include="CopyToAzureBlobStorageTask.cs" />
     <Compile Include="Include_T4Include.cs">
       <AutoGen>True</AutoGen>

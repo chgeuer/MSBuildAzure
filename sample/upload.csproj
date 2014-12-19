@@ -6,12 +6,16 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x86'">
     <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
   </PropertyGroup>
-  <UsingTask TaskName="CopyToAzureBlobStorageTask" AssemblyFile="$(MSBuildProjectDirectory)\..\bin\debug\RhysG.MSBuild.Azure.dll" />
+  <UsingTask TaskName="CopyToAzureBlobStorageTask" AssemblyFile="$(MSBuildProjectDirectory)\libs\RhysG.MSBuild.Azure.dll" />
+  <UsingTask TaskName="SyncFolderToAzureBlobStorageTask" AssemblyFile="$(MSBuildProjectDirectory)\libs\RhysG.MSBuild.Azure.dll" />
   <ItemGroup>
     <Content Include="azure-connection-string.txt" />
     <UploadFiles Include="README.txt" />
+    <PluginCopyFiles Include="$(MSBuildProjectDirectory)\..\bin\debug\*.*"/>
   </ItemGroup>
   <Target Name="Default">
+    <Copy SourceFiles="@(PluginCopyFiles)" DestinationFiles="@(PluginCopyFiles->'$(MSBuildProjectDirectory)\libs\%(RecursiveDir)%(Filename)%(Extension)')" />
     <CopyToAzureBlobStorageTask ContainerName="scripts" ContentType="text/plain" ConnectionStringFile="$(MSBuildProjectDirectory)\azure-connection-string.txt" Files="@(UploadFiles)" />
+    <SyncFolderToAzureBlobStorageTask ConnectionStringFile="$(MSBuildProjectDirectory)\azure-connection-string.txt" ContainerName="deploy" SourceFolder="$(MSBuildProjectDirectory)" />
   </Target>
 </Project>

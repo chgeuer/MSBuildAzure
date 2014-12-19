@@ -13,6 +13,9 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".nuget", ".nuget", "{93FF31
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "upload", "sample\upload.csproj", "{504E8311-05EC-413B-9ED5-B63A70B247A6}"
+	ProjectSection(ProjectDependencies) = postProject
+		{CA92587A-63F7-4596-9467-F124691EBB05} = {CA92587A-63F7-4596-9467-F124691EBB05}
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
