@@ -1,0 +1,10 @@
+
+<#
+    RootPath    = @"https://github.com/";
+    Namespace   = "notinuse";
+    Includes    = new []
+    {
+        Include (@"chgeuer/AzureLargeFileUploader/raw/master/LargeFileUploaderUtils.cs", noOuterNamespace: true) 
+    };
+#>
+<#@ include file="$(SolutionDir)\packages\T4Include.1.1.4\T4\IncludeWebFile.ttinclude" #>

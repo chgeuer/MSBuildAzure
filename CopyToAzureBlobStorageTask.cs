@@ -1,140 +1,111 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using Microsoft.Build.Framework;
-using Microsoft.WindowsAzure;
-using Microsoft.WindowsAzure.StorageClient;
-using System.IO;
-
-namespace RhysG.MSBuild.Azure
+﻿namespace RhysG.MSBuild.Azure
 {
+    using System;
+    using System.Linq;
+    using System.IO;
+    using Microsoft.Build.Framework;
+    using Microsoft.WindowsAzure.Storage;
+    using LargeFileUploader;
+
     public class CopyToAzureBlobStorageTask : ITask
     {
-        private IBuildEngine _buildEngine;
-        private ITaskHost _taskHost;
+        public IBuildEngine BuildEngine { get; set; }
 
-        public IBuildEngine BuildEngine
-        {
-            get
-            {
-                return _buildEngine;
-            }
-            set
-            {
-                _buildEngine = value;
-            }
-        }
+        public ITaskHost HostObject { get; set; }
 
         [Required]
-        public string ContainerName
-        {
-            get;
-            set;
-        }
+        public string ContainerName { get; set; }
 
         [Required]
-        public string ConnectionString
-        {
-            get;
-            set;
-        }
+        public string ConnectionStringFile { get; set; }
 
         [Required]
-        public string ContentType
-        {
-            get;
-            set;
-        }
+        public string ContentType { get; set; }
 
-		public string DestinationFolder
-        {
-            get;
-            set;
-        }
-		
-        public string ContentEncoding
-        {
-            get;
-            set;
-        }
+        public string DestinationFolder { get; set; }
+
+        public string ContentEncoding { get; set; }
 
         [Required]
-        public ITaskItem[] Files
-        {
-            get;
-            set;
-        }
+        public ITaskItem[] Files { get; set; }
 
         public bool Execute()
         {
-            CloudStorageAccount.SetConfigurationSettingPublisher((configName, configSetter) =>
+            Action<string> log = msg => BuildEngine.LogMessageEvent(new BuildMessageEventArgs(
+                        message: msg, helpKeyword: string.Empty, senderName: this.GetType().Name,
+                        importance: MessageImportance.High));
+
+            var connectionString = File.ReadAllText(this.ConnectionStringFile);
+            var account = CloudStorageAccount.Parse(connectionString);
+            var client = account.CreateCloudBlobClient();
+            var container = client.GetContainerReference(this.ContainerName);
+
+            Action<FileInfo> upload = inputFile =>
             {
-                // Provide the configSetter with the initial value
-                configSetter(ConnectionString);
-            });
+                container.CreateIfNotExists();
 
-            CloudStorageAccount account = CloudStorageAccount.FromConfigurationSetting("ConnectionSetting");
+                LargeFileUploader.LargeFileUploaderUtils.Log = log;
 
-            CloudBlobClient client = account.CreateCloudBlobClient();
 
-            CloudBlobContainer container = client.GetContainerReference(ContainerName);
-            container.CreateIfNotExist();
-            container.SetPermissions(new BlobContainerPermissions() { PublicAccess = BlobContainerPublicAccessType.Container });
+                LargeFileUploaderUtils.UploadAsync(
+                    file: inputFile,
+                    storageAccount: account,
+                    containerName: this.ContainerName,
+                    uploadParallelism: 1).Wait();
+            };
+
+            Func<string, DateTime> getLastModified = blobName => 
+            {
+                try
+                {
+                    var blobReference = container.GetBlobReferenceFromServer(blobName);
+                    if (!blobReference.Exists()) return DateTime.MinValue;
+                    if (!blobReference.Metadata.ContainsKey("LastModified")) return DateTime.MinValue;
+                    var lastModifiedStr = blobReference.Metadata["LastModified"];
+                    long timeTicks = long.Parse(lastModifiedStr);
+                    var lastModified = new DateTime(timeTicks, DateTimeKind.Utc);
+                    return lastModified;
+                }
+                catch (StorageException)
+                {
+                    return DateTime.MinValue;
+                }
+            };
+
+            Action<string, FileInfo> setLastModified = (blobName, fileInfo) =>
+            {
+                var blobReference = container.GetBlobReferenceFromServer(blobName);
+                if (!blobReference.Exists()) return;
+                blobReference.Metadata["LastModified"] = fileInfo.LastWriteTimeUtc.Ticks.ToString();
+                blobReference.SetMetadata();
+                blobReference.Properties.ContentType = ContentType;
+                if (!String.IsNullOrWhiteSpace(ContentEncoding))
+                {
+                    blobReference.Properties.ContentEncoding = ContentEncoding;
+                }
+                blobReference.SetProperties();
+            };
+
+
+            // Files.Select(async fileItem => { });
 
             foreach (ITaskItem fileItem in Files)
             {
                 FileInfo file = new FileInfo(fileItem.ItemSpec);
-
-                string folder = string.IsNullOrEmpty(DestinationFolder) ? "" : DestinationFolder + @"\";
-                CloudBlob blob = container.GetBlobReference(folder + file.Name);
-
-                try
-                {
-                    blob.FetchAttributes();
-                }
-                catch (StorageClientException) { }
-
-                DateTime lastModified = DateTime.MinValue;
-
-                if (!String.IsNullOrWhiteSpace(blob.Metadata["LastModified"]))
-                {
-                    long timeTicks = long.Parse(blob.Metadata["LastModified"]);
-                    lastModified = new DateTime(timeTicks, DateTimeKind.Utc);
-                }
-
+                string blobName = (string.IsNullOrEmpty(DestinationFolder) ? "" : string.Format("{0}/", DestinationFolder)) + file.Name;
+               
+                DateTime lastModified = getLastModified(blobName);
                 if (lastModified != file.LastWriteTimeUtc)
                 {
-                    blob.UploadFile(file.FullName);
+                    log("must upload");
+                    upload(file);
+                    setLastModified(blobName, file);
 
-                    blob.Properties.ContentType = ContentType;
-
-                    if (!String.IsNullOrWhiteSpace(ContentEncoding))
-                    {
-                        blob.Properties.ContentEncoding = ContentEncoding;
-                    }
-
-                    blob.Metadata["LastModified"] = file.LastWriteTimeUtc.Ticks.ToString();
-                    blob.SetMetadata();
-                    blob.SetProperties();
-
-                    BuildEngine.LogMessageEvent(new BuildMessageEventArgs(String.Format("Updating: {0}", file.Name), String.Empty, "CopyToAzureBlobStorageTask", MessageImportance.Normal));
+                    log(string.Format("Updating: {0}", file.Name));
                 }
             }
 
             return true;
-        }
-
-        public ITaskHost HostObject
-        {
-            get
-            {
-                return _taskHost;
-            }
-            set
-            {
-                _taskHost = value;
-            }
         }
     }
 }

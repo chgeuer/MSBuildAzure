@@ -16,19 +16,30 @@ The latest version of the library can be downloaded from the [Latest Release Pag
 
 Include the DLL in your MSBuild project
 
-	<UsingTask TaskName="CopyToAzureBlobStorageTask" AssemblyFile="..\PATH-TO-DLL\RhysG.MSBuild.Azure.dll"/>
+```
+<UsingTask TaskName="CopyToAzureBlobStorageTask" 
+           AssemblyFile="..\PATH-TO-DLL\RhysG.MSBuild.Azure.dll"/>
+```
 
 Create an item group referencing the files you want to copy to Azure Blob storage. For example to copy
 all the javascript files from the *scripts* directory:
 
-	<ItemGroup>
-		<Scripts Include="..\PATH-TO-FILES\scripts\*.js" />
-    </ItemGroup>
+```
+<ItemGroup>
+	<Scripts Include="..\PATH-TO-FILES\scripts\*.js" />
+</ItemGroup>
+```
 
 Then call the *CopyToAzureBlobStorageTask* this takes several parameters described below. To copy the files
 selected above to a container named *scripts*:
 
-	<CopyToAzureBlobStorageTask ContainerName="scripts" ContentType="text/javascript" ConnectionString="YOUR-AZURE-CONNECTION-STRING" Files="@(Scripts)" />
+```
+<CopyToAzureBlobStorageTask 
+    ContainerName="scripts" 
+    ContentType="text/javascript" 
+    ConnectionStringFile=".\not-checked-in-file-with-connection-string.txt" 
+    Files="@(Scripts)" />
+```
 
 ### Parameters ###
 
@@ -42,8 +53,8 @@ selected above to a container named *scripts*:
 		<td>The name of the Azure Blob container to copy the files to. If this does not exist it will be created</td>
 	</tr>
 	<tr>
-		<td>ConnectionString</td>
-		<td>The Azure connection string to use</td>
+		<td>ConnectionStringFile</td>
+		<td>The path to the file containing the Azure connection string</td>
 	</tr>
 	<tr>
 		<td>Files</td>
