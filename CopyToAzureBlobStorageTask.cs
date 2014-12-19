@@ -40,25 +40,24 @@
             var client = account.CreateCloudBlobClient();
             var container = client.GetContainerReference(this.ContainerName);
 
-            Action<FileInfo> upload = inputFile =>
+            Func<FileInfo, System.Threading.Tasks.Task> uploadAsync = async (inputFile) =>
             {
-                container.CreateIfNotExists();
+                await container.CreateIfNotExistsAsync();
 
                 LargeFileUploader.LargeFileUploaderUtils.Log = log;
 
-
-                LargeFileUploaderUtils.UploadAsync(
+                await LargeFileUploaderUtils.UploadAsync(
                     file: inputFile,
                     storageAccount: account,
                     containerName: this.ContainerName,
-                    uploadParallelism: 1).Wait();
+                    uploadParallelism: 1);
             };
 
-            Func<string, DateTime> getLastModified = blobName => 
+            Func<string, System.Threading.Tasks.Task<DateTime>> getLastModifiedAsync = async (blobName) => 
             {
                 try
                 {
-                    var blobReference = container.GetBlobReferenceFromServer(blobName);
+                    var blobReference = await container.GetBlobReferenceFromServerAsync(blobName);
                     if (!blobReference.Exists()) return DateTime.MinValue;
                     if (!blobReference.Metadata.ContainsKey("LastModified")) return DateTime.MinValue;
                     var lastModifiedStr = blobReference.Metadata["LastModified"];
@@ -72,9 +71,9 @@
                 }
             };
 
-            Action<string, FileInfo> setLastModified = (blobName, fileInfo) =>
+            Func<string, FileInfo, System.Threading.Tasks.Task> setLastModifiedAsync = async (blobName, fileInfo) =>
             {
-                var blobReference = container.GetBlobReferenceFromServer(blobName);
+                var blobReference = await container.GetBlobReferenceFromServerAsync(blobName);
                 if (!blobReference.Exists()) return;
                 blobReference.Metadata["LastModified"] = fileInfo.LastWriteTimeUtc.Ticks.ToString();
                 blobReference.SetMetadata();
@@ -83,27 +82,27 @@
                 {
                     blobReference.Properties.ContentEncoding = ContentEncoding;
                 }
-                blobReference.SetProperties();
+                await blobReference.SetPropertiesAsync();
             };
 
 
-            // Files.Select(async fileItem => { });
-
-            foreach (ITaskItem fileItem in Files)
-            {
+            var uploadTasks = Files.Select(async (fileItem) => {
                 FileInfo file = new FileInfo(fileItem.ItemSpec);
                 string blobName = (string.IsNullOrEmpty(DestinationFolder) ? "" : string.Format("{0}/", DestinationFolder)) + file.Name;
-               
-                DateTime lastModified = getLastModified(blobName);
+
+                DateTime lastModified = await getLastModifiedAsync(blobName);
                 if (lastModified != file.LastWriteTimeUtc)
                 {
                     log("must upload");
-                    upload(file);
-                    setLastModified(blobName, file);
+                    await uploadAsync(file);
+                    await setLastModifiedAsync(blobName, file);
 
                     log(string.Format("Updating: {0}", file.Name));
                 }
-            }
+            }).ToArray();
+
+            System.Threading.Tasks.Task.WhenAll(uploadTasks).Wait();
+
 
             return true;
         }
