@@ -1,0 +1,17 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Default" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" ToolsVersion="12.0">
+  <PropertyGroup>
+    <ProjectGuid>{504E8311-05EC-413B-9ED5-B63A70B247A6}</ProjectGuid>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x86'">
+    <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
+  </PropertyGroup>
+  <UsingTask TaskName="CopyToAzureBlobStorageTask" AssemblyFile="$(MSBuildProjectDirectory)\..\bin\debug\RhysG.MSBuild.Azure.dll" />
+  <ItemGroup>
+    <Content Include="azure-connection-string.txt" />
+    <Scripts Include="README.txt" />
+  </ItemGroup>
+  <Target Name="Default">
+    <CopyToAzureBlobStorageTask ContainerName="scripts" ContentType="text/javascript" ConnectionStringFile="$(MSBuildProjectDirectory)\azure-connection-string.txt" Files="@(Scripts)" />
+  </Target>
+</Project>
